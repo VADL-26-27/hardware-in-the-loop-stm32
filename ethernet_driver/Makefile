@@ -4,12 +4,15 @@ ifeq ($(wildcard $(R)/Drivers),)
 $(error STM32CubeH7 not found at '$(R)'. Clone it there or run: make R=/path/to/STM32CubeH7)
 endif
 P := $(R)/Projects/NUCLEO-H743ZI/Applications/LwIP/LwIP_HTTP_Server_Netconn_RTOS
-SRCS := $(addprefix $(R)/,$(shell cat sources.txt))
+# App sources live in this folder (Src/, Inc/); ST libraries come from STM32CubeH7.
+# fsdata_custom.c is #included by LwIP's fs.c, so it is not compiled on its own.
+APP_SRCS := $(filter-out Src/fsdata_custom.c,$(wildcard Src/*.c))
+SRCS := $(APP_SRCS) $(addprefix $(R)/,$(shell cat sources.txt))
 ASM := $(P)/STM32CubeIDE/Application/Startup/startup_stm32h743zitx.s
 LD  := $(P)/STM32CubeIDE/STM32H743ZITX_FLASH.ld
 CPU := -mcpu=cortex-m7 -mfpu=fpv5-d16 -mfloat-abi=hard -mthumb
 DEFS := -DSTM32H743xx -DUSE_HAL_DRIVER -DUSE_PWR_LDO_SUPPLY -DUSE_STM32H7XX_NUCLEO_144_MB1364
-INCS := -I$(P)/Inc -I$(P)/Src \
+INCS := -IInc -ISrc \
   -I$(R)/Drivers/CMSIS/Include -I$(R)/Drivers/CMSIS/Device/ST/STM32H7xx/Include \
   -I$(R)/Drivers/STM32H7xx_HAL_Driver/Inc -I$(R)/Drivers/BSP/STM32H7xx_Nucleo \
   -I$(R)/Drivers/BSP/Components/Common -I$(R)/Drivers/BSP/Components -I$(R)/Drivers/BSP/Components/lan8742 \
@@ -21,7 +24,7 @@ CFLAGS := $(CPU) $(DEFS) $(INCS) -Os -g3 -std=gnu11 -ffunction-sections -fdata-s
 OBJS := $(addprefix obj/,$(notdir $(SRCS:.c=.o))) obj/startup.o
 vpath %.c $(sort $(dir $(SRCS)))
 all: app.elf app.bin
-obj/%.o: %.c | obj ; arm-none-eabi-gcc $(CFLAGS) -c $< -o $@
+obj/%.o: %.c $(wildcard Inc/*.h) | obj ; arm-none-eabi-gcc $(CFLAGS) -c $< -o $@
 obj/startup.o: $(ASM) | obj ; arm-none-eabi-gcc $(CPU) -x assembler-with-cpp -c $< -o $@
 obj: ; mkdir -p obj
 app.elf: $(OBJS) ; arm-none-eabi-gcc $(CPU) -T$(LD) --specs=nano.specs -Wl,--gc-sections -Wl,-Map=app.map $^ -o $@ -lc -lm && arm-none-eabi-size $@

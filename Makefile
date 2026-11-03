@@ -9,7 +9,9 @@
 #   make CC=arm-none-eabi-gcc CFLAGS="-O2 ..." flash
 
 # Toolchain
-CC ?= arm-none-eabi-gcc
+# CC must use = not ?=: make predefines CC=cc (clang on macOS), so ?= would never apply.
+# Command-line overrides (make CC=...) still take precedence.
+CC = arm-none-eabi-gcc
 OBJCOPY ?= arm-none-eabi-objcopy
 SIZE ?= arm-none-eabi-size
 

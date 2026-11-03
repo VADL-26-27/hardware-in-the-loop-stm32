@@ -1,0 +1,4 @@
+# Logs written by the scripts
+*.csv
+*.log
+__pycache__/

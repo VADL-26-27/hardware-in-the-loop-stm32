@@ -1,10 +1,3 @@
-Projects/NUCLEO-H743ZI/Applications/LwIP/LwIP_HTTP_Server_Netconn_RTOS/Src/app_ethernet.c
-Projects/NUCLEO-H743ZI/Applications/LwIP/LwIP_HTTP_Server_Netconn_RTOS/Src/ethernetif.c
-Projects/NUCLEO-H743ZI/Applications/LwIP/LwIP_HTTP_Server_Netconn_RTOS/Src/httpserver_netconn.c
-Projects/NUCLEO-H743ZI/Applications/LwIP/LwIP_HTTP_Server_Netconn_RTOS/Src/main.c
-Projects/NUCLEO-H743ZI/Applications/LwIP/LwIP_HTTP_Server_Netconn_RTOS/Src/stm32h7xx_hal_timebase_tim.c
-Projects/NUCLEO-H743ZI/Applications/LwIP/LwIP_HTTP_Server_Netconn_RTOS/Src/stm32h7xx_it.c
-Projects/NUCLEO-H743ZI/Applications/LwIP/LwIP_HTTP_Server_Netconn_RTOS/Src/system_stm32h7xx.c
 Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal.c
 Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_adc.c
 Drivers/STM32H7xx_HAL_Driver/Src/stm32h7xx_hal_adc_ex.c
