@@ -39,12 +39,28 @@ def find_port():
     return candidates[0]
 
 
+def as_text(hex_bytes):
+    """The bytes as text if they are all printable ASCII, else None."""
+    try:
+        data = bytes.fromhex(hex_bytes)
+    except ValueError:
+        return None
+    if data and all(32 <= b < 127 or b in (9, 10, 13) for b in data):
+        return data.decode("ascii")
+    return None
+
+
 def show(line, verbose):
     kind = line.split(",", 1)[0]
     if kind == "RX":
         # Always show bad packets; show good ones only with --verbose
         if verbose or line.split(",")[4:5] != ["OK"]:
             print(line)
+    elif kind == "RAW":
+        print(line)
+        text = as_text(line.split(",")[-1])
+        if text:
+            print(f"  text: {text}")
     elif kind in ("STAT", "SESSION", "BOOT", "ERR"):
         print(line)
     else:

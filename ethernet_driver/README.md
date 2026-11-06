@@ -213,12 +213,26 @@ STAT,49000,ip=192.168.0.10,rx=158,ok=158,bad_crc=0,bad_hdr=0,bad_len=0,lost=0,la
 - **Status values:**
   - `OK`: the packet passed every check
   - `CRC`: the contents changed in transit
-  - `HDR`: wrong magic, version or type
+  - `HDR`: wrong version or type
   - `LEN`: the size doesn't match `payload_len`
 - **`STAT` counters:**
   - `lost`: gaps in the sequence numbers
   - `late`: a packet arrived older than one already seen (reordered or duplicated)
   - `log_drop`: packets the board received but didn't have time to print
+
+## Sending your own format
+
+A packet on port 5005 that doesn't start with `HILU` isn't rejected. The board counts it as `raw`
+and prints a line with its total size, the board's uptime in ms, and up to the first 256 bytes in
+hex:
+
+```
+RAW,12,48211,48656C6C6F20626F61726421
+```
+
+`serial_reader.py` always shows these lines, and also shows the bytes as text if they are all
+printable. To use this, point your program at `192.168.0.10`, port `5005`. The board doesn't check
+these packets for corruption or loss, and `compare_logs.py` ignores them.
 
 ## Limits
 

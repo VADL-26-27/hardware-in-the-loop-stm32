@@ -12,14 +12,19 @@
   *          If the queue is full, the record is dropped and counted as
   *          log_drop; the packet itself was still received and counted.
   *
+  *          A datagram that does not start with the HILU magic is not treated
+  *          as an error: it is application data in some other format, so it
+  *          is counted as raw and its bytes are printed as hex.
+  *
   *          Serial output (one line each):
   *            BOOT,<fw>,port=<port>,baud=<baud>
   *            SESSION,<board_ms>                       seq 0 seen: counters reset
   *            RX,<seq>,<payload_len>,<crc32>,<status>,<board_ms>
+  *            RAW,<size>,<board_ms>,<hex of up to RAW_PRINT_BYTES bytes>
   *            STAT,<board_ms>,ip=..,rx=..,ok=..,bad_crc=..,bad_hdr=..,bad_len=..,
-  *                 lost=..,late=..,log_drop=..
-  *          <status> is OK, CRC (checksum mismatch), HDR (bad magic, version
-  *          or type) or LEN (size does not match payload_len). <crc32> is the
+  *                 lost=..,late=..,log_drop=..,raw=..
+  *          <status> is OK, CRC (checksum mismatch), HDR (bad version or
+  *          type) or LEN (size does not match payload_len). <crc32> is the
   *          CRC the board computed over what it received.
   ******************************************************************************
   */
@@ -31,9 +36,12 @@
 #include "lwip/api.h"
 #include "lwip/netif.h"
 #include <stdio.h>
+#include <string.h>
 
 #define LOG_QUEUE_LEN           256U
 #define STAT_PERIOD_MS          1000U
+#define RAW_QUEUE_LEN           8U
+#define RAW_PRINT_BYTES         256U
 
 typedef enum
 {
@@ -47,6 +55,7 @@ typedef enum
 {
   REC_PACKET = 0,
   REC_SESSION,
+  REC_RAW,
 } RecordKind;
 
 typedef struct
@@ -61,6 +70,14 @@ typedef struct
 
 typedef struct
 {
+  uint32_t board_ms;
+  uint16_t size;
+  uint16_t stored;
+  uint8_t  data[RAW_PRINT_BYTES];
+} RawRecord;
+
+typedef struct
+{
   uint32_t rx;
   uint32_t ok;
   uint32_t bad_crc;
@@ -69,6 +86,7 @@ typedef struct
   uint32_t lost;
   uint32_t late;
   uint32_t log_drop;
+  uint32_t raw;
 } RxStats;
 
 static const char *const status_names[] = { "OK", "CRC", "HDR", "LEN" };
@@ -84,6 +102,7 @@ static uint8_t have_seq;
 static uint8_t rx_buf[HILU_MAX_PACKET];
 static uint32_t crc_table[256];
 static osMessageQueueId_t log_queue;
+static osMessageQueueId_t raw_queue;
 
 static const osThreadAttr_t UdpRx_attributes = {
   .name = "UdpRx",
@@ -161,6 +180,26 @@ static void track_seq(uint32_t seq)
   }
 }
 
+/* The bytes go on their own queue; a REC_RAW record keeps them in log order */
+static void handle_raw(const uint8_t *buf, uint16_t len, uint16_t total)
+{
+  static RawRecord raw;
+  RxRecord rec = { .kind = REC_RAW };
+
+  raw.board_ms = osKernelGetTickCount();
+  raw.size = total;
+  raw.stored = (len < RAW_PRINT_BYTES) ? len : RAW_PRINT_BYTES;
+  memcpy(raw.data, buf, raw.stored);
+
+  stats.raw++;
+  if (osMessageQueuePut(raw_queue, &raw, 0U, 0U) != osOK)
+  {
+    stats.log_drop++;
+    return;
+  }
+  post_record(&rec);
+}
+
 /**
   * @brief  Validate one received datagram and post its record.
   * @param  len    bytes copied into buf
@@ -170,11 +209,17 @@ static void handle_packet(const uint8_t *buf, uint16_t len, uint16_t total)
 {
   RxRecord rec = { .kind = REC_PACKET, .board_ms = osKernelGetTickCount() };
 
+  if (len < 4U || rd32(&buf[0]) != HILU_MAGIC)
+  {
+    handle_raw(buf, len, total);
+    return;
+  }
+
   if (total > HILU_MAX_PACKET || len < HILU_HEADER_SIZE + HILU_CRC_SIZE)
   {
     rec.status = RX_BAD_LEN;
   }
-  else if (rd32(&buf[0]) != HILU_MAGIC || buf[4] != HILU_VERSION || buf[5] != HILU_TYPE_DATA)
+  else if (buf[4] != HILU_VERSION || buf[5] != HILU_TYPE_DATA)
   {
     rec.status = RX_BAD_HDR;
   }
@@ -242,11 +287,38 @@ static void udp_rx_thread(void *argument)
   }
 }
 
+static void print_raw(void)
+{
+  static const char hex[] = "0123456789ABCDEF";
+  static RawRecord raw;
+  static char line[32 + 2U * RAW_PRINT_BYTES + 2U];
+
+  if (osMessageQueueGet(raw_queue, &raw, NULL, 0U) != osOK)
+  {
+    return;
+  }
+
+  int n = snprintf(line, sizeof(line), "RAW,%u,%lu,", (unsigned)raw.size, (unsigned long)raw.board_ms);
+  for (uint16_t i = 0U; i < raw.stored; i++)
+  {
+    line[n++] = hex[raw.data[i] >> 4];
+    line[n++] = hex[raw.data[i] & 0x0FU];
+  }
+  line[n++] = '\r';
+  line[n++] = '\n';
+  serial_log_write(line, (uint16_t)n);
+}
+
 static void print_record(const RxRecord *rec)
 {
   char line[96];
   int n;
 
+  if (rec->kind == REC_RAW)
+  {
+    print_raw();
+    return;
+  }
   if (rec->kind == REC_SESSION)
   {
     n = snprintf(line, sizeof(line), "SESSION,%lu\r\n", (unsigned long)rec->board_ms);
@@ -263,17 +335,18 @@ static void print_record(const RxRecord *rec)
 
 static void print_stats(uint32_t now)
 {
-  char line[192];
+  char line[208];
   const ip4_addr_t *ip = netif_ip4_addr(&gnetif);
   int n = snprintf(line, sizeof(line),
                    "STAT,%lu,ip=%u.%u.%u.%u,rx=%lu,ok=%lu,bad_crc=%lu,bad_hdr=%lu,"
-                   "bad_len=%lu,lost=%lu,late=%lu,log_drop=%lu\r\n",
+                   "bad_len=%lu,lost=%lu,late=%lu,log_drop=%lu,raw=%lu\r\n",
                    (unsigned long)now,
                    ip4_addr1(ip), ip4_addr2(ip), ip4_addr3(ip), ip4_addr4(ip),
                    (unsigned long)stats.rx, (unsigned long)stats.ok,
                    (unsigned long)stats.bad_crc, (unsigned long)stats.bad_hdr,
                    (unsigned long)stats.bad_len, (unsigned long)stats.lost,
-                   (unsigned long)stats.late, (unsigned long)stats.log_drop);
+                   (unsigned long)stats.late, (unsigned long)stats.log_drop,
+                   (unsigned long)stats.raw);
   serial_log_write(line, (uint16_t)n);
 }
 
@@ -313,7 +386,8 @@ void udp_receiver_init(void)
   crc32_init();
 
   log_queue = osMessageQueueNew(LOG_QUEUE_LEN, sizeof(RxRecord), NULL);
-  if (log_queue == NULL)
+  raw_queue = osMessageQueueNew(RAW_QUEUE_LEN, sizeof(RawRecord), NULL);
+  if (log_queue == NULL || raw_queue == NULL)
   {
     Error_Handler();
   }
