@@ -25,7 +25,6 @@
 #include "ethernetif.h"
 #include "lwip/netif.h"
 #include "lwip/tcpip.h"
-#include "httpserver_netconn.h"
 #include "app_ethernet.h"
 #include "serial_log.h"
 #include "udp_receiver.h"
@@ -123,9 +122,6 @@ void StartThread(void* argument)
 
   /* Initialize the LwIP stack */
   Netif_Config();
-
-  /* Initialize webserver demo */
-  http_server_netconn_init();
 
   /* Start UDP receiver (logs each packet over USART3) */
   udp_receiver_init();

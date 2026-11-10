@@ -79,7 +79,7 @@ a lot of data that needs to be copied, this should be set high. */
 #define LWIP_IPV4                1
 
 /* ---------- TCP options ---------- */
-#define LWIP_TCP                1
+#define LWIP_TCP                0   /* UDP only; was 1 for ST's web server */
 #define TCP_TTL                 255
 
 /* Controls if TCP should queue segments that arrive out of
@@ -201,14 +201,6 @@ The STM32H7xx allows computing and verifying the IP, UDP, TCP and ICMP checksums
  */
 #define LWIP_NETIF_API                     1
 
-/*
-   ------------------------------------
-   ---------- httpd options ----------
-   ------------------------------------
-*/
-/** Set this to 1 to include "fsdata_custom.c" instead of "fsdata.c" for the
- * file system (to prevent changing the file included in CVS) */
-#define HTTPD_USE_CUSTOM_FSDATA   1
 #define MEMP_DEBUG LWIP_DBG_ON
 #define MEM_DEBUG LWIP_DBG_ON
 

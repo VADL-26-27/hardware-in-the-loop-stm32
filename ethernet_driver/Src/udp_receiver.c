@@ -40,8 +40,8 @@
 
 #define LOG_QUEUE_LEN           256U
 #define STAT_PERIOD_MS          1000U
-#define RAW_QUEUE_LEN           8U
-#define RAW_PRINT_BYTES         256U
+#define RAW_QUEUE_LEN           4U
+#define RAW_PRINT_BYTES         1024U
 
 typedef enum
 {
